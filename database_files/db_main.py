@@ -1,96 +1,41 @@
 '''
- -----------------------
-|    Database File ---  |
- -----------------------
+ ----------------------------------
+|            db_main.py            |
+|               ---                |
+|    Database Connection File ---  |
+ ----------------------------------
 
 The DB should be installed onto the file manager's device over a Local Area Network.
 
 The DB tracks file paths on users devices (ideally in an app specific folder like 'uploaded_files')
 so that users on the same LAN can share files to each other through a centralized server.
+
+The database should be named "filesharing.db".
+This file establishes the connection from Python to the database.
 '''
 
 import sqlite3
+from pathlib import Path
 
-'''
-The 'try' statement is for creating and opening the connection to the database, and
-'with' should automatically close the connection after it is finished.
+# The project only has a root directory and a subdirectory called 'database_files'.
+# The SQLite database will be put in the subdirectory 'database_files' for organization.
 
-- If the database has not been established yet, then the code should create one named 'filesharing.db'
-  and create the tables 'Users', 'File_Metadata', and 'Audit_Log' as we have defined in the schema.
-- An additional table 'File_Users_Shared_To' is a separate table made to store the UIDs of users
-  that the owner has shared access to a specific files to.
-'''
+PROJECT_ROOT = Path(__file__).resolve().parent[1]       # Only tracks .../project root directory/...
+DB_DIR = PROJECT_ROOT / "database_files"                # Appends subdirectory 'database_files' to the root directory path
+DATABASE_PATH = DB_DIR / "filesharing.db"               # Database path --- .../root/database_files/filesharing.db
 
-# Path on device, can change it here :3
-database_path = "filesharing.db"
+def get_connection():
 
-try:
-    with sqlite3.connect(database_path) as conn:
-        print(f"Opened SQLite database with version {sqlite3.sqlite_version} successfully.")
+    # Ensures that '/root/database_files/' exists before trying to connect
 
-        # Creates a cursor to connect the database to Python,
-        # And turning on foreign keys just in case it was off by default so that the tables can work.
+    DB_DIR.mkdir(parents=True, exist_ok=True)
 
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON;")
+    # Creates a connection to the SQLite database, with a 10 second timeout before throwing an error.
+    # If the database file does not exist, it will be created automatically in .../root/database_files/filesharing.db
 
-        # Creates 'Users' table if it doesn't already exist
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS Users (
-                uid INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL,
-                password_hash TEXT NOT NULL
-            );
-        """)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=10)
 
-        # Creates 'File_Metadata' table if it doesn't already exist
-        # File UUID is a randomly generated sequence in Python, so I save it as TEXT here.
-        # Files belonging to a deleted user will all be deleted.
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS File_Metadata (
-                uuid TEXT PRIMARY KEY,
-                owner_uid INTEGER,
-                name TEXT NOT NULL,
-                location_path TEXT,
-                size INTEGER NOT NULL,
-                type TEXT NOT NULL,
-                SHA256_checksum TEXT,
-                FOREIGN KEY (owner_uid) REFERENCES Users(uid) ON DELETE CASCADE
-            );
-        """)
-
-        # Separate table to store the users other than the owner that have been given access to a file.
-        # Entries will be deleted if either the file or shared_user is deleted.
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS File_Users_Shared_To (
-                file_uuid TEXT NOT NULL,
-                shared_user_uid INTEGER NOT NULL,
-                PRIMARY KEY (file_uuid, shared_user_uid),
-                FOREIGN KEY (file_uuid) REFERENCES File_Metadata(uuid) ON DELETE CASCADE,
-                FOREIGN KEY (shared_user_uid) REFERENCES Users(uid) ON DELETE CASCADE
-            );
-        """)
-
-        # Creates 'Audit_Log' table if it doesn't already exist
-        # Action is either 'Upload' or 'Download'
-        # Timestamp is stored as TEXT formatted as "yyyy-mm-dd hh:mm:ss"
-        # If a user gets deleted, associated entries will set the uid to NULL to not conflict with new or current uids.
-        # Same thing if a file gets deleted.
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS Audit_Log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                file_uuid TEXT,
-                owner_uid INTEGER,
-                action TEXT,
-                timestamp TEXT,
-                FOREIGN KEY (owner_uid) REFERENCES Users(uid) ON DELETE SET NULL,
-                FOREIGN KEY (file_uuid) REFERENCES File_Metadata(uuid) ON DELETE SET NULL
-            );
-        """)
-
-        # Saves changes to the database file 
-        conn.commit()
-
-except:
-    print("Failed to open database: ", sqlite3.OperationalError)
-
+    conn.execute("PRAGMA foreign_keys = 1")     # Enable foreign key support
+    conn.execute("PRAGMA journal_mode = WAL")   # Enable "Write-Ahead Logging" for better concurrency, aka. read and write at the same time.
+    conn.row_factory = sqlite3.Row              # This allows us to access columns by name instead of index
+    return conn
