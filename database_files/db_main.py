@@ -23,12 +23,17 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent[1]       # Only tracks .../project root directory/...
 DB_DIR = PROJECT_ROOT / "database_files"                # Appends subdirectory 'database_files' to the root directory path
 DATABASE_PATH = DB_DIR / "filesharing.db"               # Database path --- .../root/database_files/filesharing.db
+UPLOAD_DIR = PROJECT_ROOT / "uploaded_files"            # Directory for files uploaded to the database
+DOWNLOAD_DIR = PROJECT_ROOT / "downloaded_files"        # Destination directory for files downloaded from the database
 
 def get_connection():
 
     # Ensures that '/root/database_files/' exists before trying to connect
+    # Also makes sure that the upload and download directories exist as well
 
     DB_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
     # Creates a connection to the SQLite database, with a 10 second timeout before throwing an error.
     # If the database file does not exist, it will be created automatically in .../root/database_files/filesharing.db
