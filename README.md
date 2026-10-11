@@ -11,14 +11,14 @@
 ### Deliverable 1 
 We aimed to create the main database and established that the basic file transfer functions worked.
 
-Right now, our app has these features:
+As of **Deliverable 1**, our app has these features:
 
 - File Uploads/Downloads
 - SHA256 File Checksums
 - Audit Log Entries
 - File Validation Logic
 
-We are still working on these features:
+We are still working on these features, we plan do add these in **Deliverable 2**:
 
 - Identity and Access Control:
     - User account creation/deletion
@@ -34,10 +34,10 @@ File_Share/
 │   ├── ___init___.py
 │   ├── db_main.py
 │   └── db_operations.py
-├── uploaded_files/
-│   └── (Files uploaded to app)
+├── server_uploaded_files/
+│   └── (Files uploaded to app, stored on server side)
 ├── downloaded_files/
-│   └── (Files downloaded from app over LAN)
+│   └── (Files downloaded from app over LAN, stored on client side)
 ├── main.py
 ├── validation.py
 └── README.md

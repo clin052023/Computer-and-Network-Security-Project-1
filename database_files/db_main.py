@@ -20,11 +20,11 @@ from pathlib import Path
 # The project only has a root directory and a subdirectory called 'database_files'.
 # The SQLite database will be put in the subdirectory 'database_files' for organization.
 
-PROJECT_ROOT = Path(__file__).resolve().parent[1]       # Only tracks .../project root directory/...
+PROJECT_ROOT = Path(__file__).resolve().parents[1]       # Only tracks .../project root directory/...
 DB_DIR = PROJECT_ROOT / "database_files"                # Appends subdirectory 'database_files' to the root directory path
 DATABASE_PATH = DB_DIR / "filesharing.db"               # Database path --- .../root/database_files/filesharing.db
-UPLOAD_DIR = PROJECT_ROOT / "uploaded_files"            # Directory for files uploaded to the database
-DOWNLOAD_DIR = PROJECT_ROOT / "downloaded_files"        # Destination directory for files downloaded from the database
+UPLOAD_DIR = PROJECT_ROOT / "server_uploaded_files"            # Directory for files uploaded to the database, on server side
+DOWNLOAD_DIR = PROJECT_ROOT / "downloaded_files"        # Destination directory for files downloaded from the database, on client side
 
 def get_connection():
 

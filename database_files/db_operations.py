@@ -8,6 +8,14 @@
  Separate file for database operations to call while the app is running.
 '''
 
+# ------------------- #
+#    IMPORTANT!!!     #
+# ------------------- #
+# Right now, these operations are only written to work *locally*
+# We need to modify them to work over LAN after we establish HTTP endpoints
+# My guess rn is that the upload/download functions need to be modified to work with FastAPI
+# The other functions can probably work fine,,, it's mostly on the server's side doing work.
+
 import sqlite3
 import os
 from pathlib import Path
@@ -16,8 +24,8 @@ import uuid
 import hashlib
 
 # From db_main.py...
-PROJECT_ROOT = Path(__file__).resolve().parent[1]
-UPLOAD_DIR = PROJECT_ROOT / "uploaded_files"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+UPLOAD_DIR = PROJECT_ROOT / "server_uploaded_files"
 DOWNLOAD_DIR = PROJECT_ROOT / "downloaded_files"
 
 
@@ -100,12 +108,16 @@ def create_db(conn):
 # -------------------------- # //////////////////////////////////////////////////////////////////////////
 
 # Seperate helper function to make SHA256 checksums for files.
+# Passing the local path location of the file to this function to create a checksum when uploading to database.
+# When file is downloaded, check the checksum recorded in the database with the downloaded file.
 
-def checksum(path):
+def file_checksum(path):
 
+    # "rb" = binary read mode
+    with open (path, "rb") as f:
+        sha256_digest = hashlib.filedigest(f, "sha256")
 
-
-    return 
+    return sha256_digest.hexdigest()
 
 # --------------------- # //////////////////////////////////////////////////////////////////////////
 #     User Accounts     # //////////////////////////////////////////////////////////////////////////
@@ -262,7 +274,7 @@ def list_files_shared_to_user(conn, username):
 # Function to upload a file to the database.
 # File location, type, and size will be validated in main.py.
 # Creates an entry in Audit_Log table when called.
-# TODO: check upload file function
+
 def upload_file(conn, username, path):
 
     owner_uid = check_user_exists(conn, username)
@@ -271,9 +283,9 @@ def upload_file(conn, username, path):
         return None
 
     # Finding the path locally on the user's machine.
-
     source_path = Path(path)
-    if not source_path:
+
+    if not source_path.exists():
         print(f"\nUPLOAD FILE:\nUpload failed: Local file {path} not found.")
         return None
 
@@ -288,15 +300,16 @@ def upload_file(conn, username, path):
     name = source_path.name
     file_size = source_path.stat().st_size
     file_type = source_path.suffix
-    
-    # TODO: finish checksum function at the top of the file!!
-    # checksum = 
 
     # Storing the file physically in the uploaded_files directory as its UUID.
     # With some help from the shutil library --> 'project_root/uploaded_files/<file_uuid>'
 
     stored_path = UPLOAD_DIR / file_uuid
     shutil.copy(source_path, stored_path)
+
+    # Checksum on the file stored to 'uploaded_files'
+    
+    checksum = file_checksum(stored_path)
 
     cursor = conn.cursor()
     cursor.execute(
@@ -307,7 +320,6 @@ def upload_file(conn, username, path):
     )
 
     create_log_entry(conn, file_uuid, owner_uid, "UPLOAD")
-
     conn.commit()
     print(f"\nUPLOAD FILE:\nSuccessfully uploaded file \'{name}\'.\n- Assignment UUID: {file_uuid}")
     return file_uuid
@@ -335,7 +347,7 @@ def delete_file(conn, file_uuid, file_name):
 # Function to give permissions to give another user download access to a file.
 # Needs to check if user and file exists first.
 
-def share_file(conn, file_uuid, file_path, target_username):
+def share_file(conn, file_uuid, target_username):
 
     uid = check_user_exists(conn, target_username)
     if not uid:
@@ -344,7 +356,7 @@ def share_file(conn, file_uuid, file_path, target_username):
 
     file = check_file_exists(conn, file_uuid)
     if not file:
-        print(f"\nSHARING FILE:\nFile \'{file_path}\' does not exist in the database.")
+        print(f"\nSHARING FILE:\nFile \'{file_uuid}\' does not exist in the database.")
         return
 
     cursor = conn.cursor()
@@ -356,23 +368,23 @@ def share_file(conn, file_uuid, file_path, target_username):
             (file, uid)
         )
         conn.commit()
-        print(f"\nSHARING FILE:\nFile \'{file_path}\' has been shared to user \'{target_username}\'.")
+        print(f"\nSHARING FILE:\nFile \'{file_uuid}\' has been shared to user \'{target_username}\'.")
         return True
     
     except sqlite3.IntegrityError:
-        print(f"\nSHARING FILE:\nFile \'{file_path}\' has already been shared with user \'{target_username}\'.")
+        print(f"\nSHARING FILE:\nFile \'{file_uuid}\' has already been shared with user \'{target_username}\'.")
         return False
     
 
 # Function to take away download permissions from another user.
 # Must check if the file exists first, because it may have been deleted earlier.
 
-def unshare_file_user(conn, file_uuid, file_path, target_username):
+def unshare_file_user(conn, file_uuid, target_username):
 
     cursor = conn.cursor()
 
     if not check_file_exists(conn, file_uuid):
-        print(f"\nUNSHARING FILE:\nFile {file_path} does not exist.")
+        print(f"\nUNSHARING FILE:\nFile {file_uuid} does not exist.")
         return False
 
     target_uid = check_user_exists(conn, target_username)
@@ -382,7 +394,7 @@ def unshare_file_user(conn, file_uuid, file_path, target_username):
         return False
 
     cursor.execute(
-        "DELETE FROM File_Users_Shared_To WHERE file_uuid = ? AND shared_user_id = ?", 
+        "DELETE FROM File_Users_Shared_To WHERE file_uuid = ? AND shared_user_uid = ?", 
         (file_uuid, target_uid)
     )
 
@@ -391,10 +403,10 @@ def unshare_file_user(conn, file_uuid, file_path, target_username):
 
     if (cursor.rowcount > 0):
         conn.commit()
-        print(f"\nUNSHARING FILE:\nFile \'{file_path}\' has been unshared with user \'{target_username}\'.")
+        print(f"\nUNSHARING FILE:\nFile \'{file_uuid}\' has been unshared with user \'{target_username}\'.")
         return True
     else:
-        print(f"\nUNSHARING FILE:\nFile \'{file_path}\' is not currently shared with user \'{target_username}\'.")
+        print(f"\nUNSHARING FILE:\nFile \'{file_uuid}\' is not currently shared with user \'{target_username}\'.")
         return False
 
 
@@ -405,7 +417,7 @@ def unshare_file_user(conn, file_uuid, file_path, target_username):
 # Function to check if a user has permissions to download a file.
 # The user must be the file's owner or they have to have shared access to it recorded in table 'File_Users_Shared_To'.
 
-def check_file_download_access(conn, file_uuid, file_path, target_username):
+def check_file_download_access(conn, file_uuid, target_username):
 
     cursor = conn.cursor()
 
@@ -416,7 +428,7 @@ def check_file_download_access(conn, file_uuid, file_path, target_username):
         return False
 
     if not check_file_exists(conn, file_uuid):
-        print(f"\nCHECK FILE DOWNLOAD PERMISSIONS:\nFile \'{file_path}\' does not exist.")
+        print(f"\nCHECK FILE DOWNLOAD PERMISSIONS:\nFile \'{file_uuid}\' does not exist.")
         return False
 
     # Check if the user is the owner of the file OR if it has been shared to them.
@@ -436,16 +448,46 @@ def check_file_download_access(conn, file_uuid, file_path, target_username):
     if row:
         return True
     else:
-        print(f"\nCHECK FILE DOWNLOAD PERMISSIONS:\nUser \'{target_username}\' does not have access to file \'{file_path}\'.")
+        print(f"\nCHECK FILE DOWNLOAD PERMISSIONS:\nUser \'{target_username}\' does not have access to file \'{file_uuid}\'.")
+        return False
 
 
 # Function to download a file from the database.
 # Needs to call check_file_download_access() first to see if the user has permissions to download the file.
-# TODO: finish download_file
-def download_file(conn):
+
+def download_file(conn, username, file_uuid):
+
+    if not check_file_download_access(conn, file_uuid, username):
+        print(f"\nDOWNLOAD FILE:\nDownload failed. User \'{username}\' has no download access to file {file_uuid}.")
+        return False
 
     cursor = conn.cursor()
-    return
+    cursor.execute("SELECT * FROM File_Metadata WHERE uuid = ?", (file_uuid,))
+    file_row = cursor.fetchone()
+
+    path_downloaded_from = Path(file_row["location_path"])
+    if not path_downloaded_from.exists():
+        print("\nDOWNLOAD FILE:\nDownload failed. Physical file missing from server storage folder.")
+        return False
+
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    download_path = DOWNLOAD_DIR / file_row["name"]
+    shutil.copy(path_downloaded_from, download_path)
+
+    # SHA256 verification, delete file if checksum doesn't match.
+
+    hash_check = file_checksum(download_path)
+    if hash_check != file_row["SHA256_checksum"]:
+        print(f"\nDOWNLOAD FILE:\nDownloaded file hash does not match hash in database records.")
+        download_path.unlink(missing_ok=True)
+        return False
+
+    user_uid = check_user_exists(username)
+    create_log_entry(conn, file_uuid, user_uid, "DOWNLOAD")
+    conn.commit()
+
+    print(f"\nDOWNLOAD FILE:\nFile downloaded successfully to \'{download_path}\'")
+    return True
 
 
 # ----------------------- # //////////////////////////////////////////////////////////////////////////
