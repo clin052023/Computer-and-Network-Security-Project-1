@@ -18,7 +18,7 @@ As of **Deliverable 1**, our app has these features:
 - Audit Log Entries
 - File Validation Logic
 
-We are still working on these features, we plan do add these in **Deliverable 2**:
+We are still working on these features, we plan to add these in **Deliverable 2**:
 
 - Identity and Access Control:
     - User account creation/deletion

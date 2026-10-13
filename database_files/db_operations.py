@@ -17,7 +17,6 @@
 # The other functions can probably work fine,,, it's mostly on the server's side doing work.
 
 import sqlite3
-import os
 from pathlib import Path
 import shutil
 import uuid
@@ -497,8 +496,11 @@ def download_file(conn, username, file_uuid):
 # If you want to delete the database later, here's a delete function.
 
 def delete_db(db_path):
-    if os.path.exists(db_path):
-        os.remove(db_path)
+
+    path = Path(db_path)
+
+    if path.exists():
+        path.unlink()
         print(f"\nDELETE DB:\nDatabase {db_path} has been deleted successfully.")
     else:
         print(f"\nDELETE DB:\nDatabase {db_path} does not exist.")
