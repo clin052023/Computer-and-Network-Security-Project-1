@@ -1,0 +1,12 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Local SQLite database
+database_files/*.db
+database_files/*.db-shm
+database_files/*.db-wal
+
+# Uploaded and downloaded test files
+server_uploaded_files/*
+downloaded_files/*

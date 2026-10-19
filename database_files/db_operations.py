@@ -114,7 +114,7 @@ def file_checksum(path):
 
     # "rb" = binary read mode
     with open (path, "rb") as f:
-        sha256_digest = hashlib.filedigest(f, "sha256")
+        sha256_digest = hashlib.file_digest(f, "sha256")
 
     return sha256_digest.hexdigest()
 
@@ -274,7 +274,7 @@ def list_files_shared_to_user(conn, username):
 # File location, type, and size will be validated in main.py.
 # Creates an entry in Audit_Log table when called.
 
-def upload_file(conn, username, path):
+def upload_file(conn, username, path, original_name=None):
 
     owner_uid = check_user_exists(conn, username)
     if not owner_uid:
@@ -296,7 +296,8 @@ def upload_file(conn, username, path):
     # metadata on the file that we need to store in File_Metadata.
 
     file_uuid = str(uuid.uuid4())
-    name = source_path.name
+    # Keep the original filename when saving the file's metadata.
+    name = Path(original_name).name if original_name else source_path.name
     file_size = source_path.stat().st_size
     file_type = source_path.suffix
 
@@ -481,7 +482,7 @@ def download_file(conn, username, file_uuid):
         download_path.unlink(missing_ok=True)
         return False
 
-    user_uid = check_user_exists(username)
+    user_uid = check_user_exists(conn, username)
     create_log_entry(conn, file_uuid, user_uid, "DOWNLOAD")
     conn.commit()
 
