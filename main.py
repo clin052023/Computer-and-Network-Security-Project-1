@@ -25,16 +25,30 @@ import sqlite3
 # Importing local files
 
 from database_files import get_connection, db_operations
+from contextlib import asynccontextmanager
 import validation
-
-
-# Create the FastAPI app
-app = FastAPI()
 
 # Project folders
 PROJECT_ROOT = Path(__file__).resolve().parent
 DOWNLOAD_DIR = PROJECT_ROOT / "downloaded_files"
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MiB
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Create the download directory if it doesn't exist
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+    conn = get_connection()
+    try:
+        # Initialize the database tables if they don't exist
+        db_operations.create_db(conn)
+    finally:
+        conn.close()
+
+    yield
+
+# Create the FastAPI app
+app = FastAPI(lifespan=lifespan)
 
 # Upload a file to the server
 @app.post("/upload/")
@@ -54,11 +68,18 @@ async def upload_file(username: str, file: UploadFile):
             upload_path = Path(temp_file.name)
 
             # Read and save the uploaded file in chunks
+            total_size = 0
             while True:
                 chunk = await file.read(1024 * 1024)
 
                 if not chunk:
                     break
+               
+                total_size += len(chunk)
+
+
+                if total_size > MAX_FILE_SIZE:
+                    raise HTTPException(status_code=413, detail="File size exceeds 100 MiB limit.")
 
                 temp_file.write(chunk)
 
@@ -86,7 +107,9 @@ async def upload_file(username: str, file: UploadFile):
 
         return {
             "message": "File uploaded successfully",
-            "uuid": file_uuid
+            "uuid": file_uuid,
+            "filename": file.filename,
+            "size": total_size
         }
 
     finally:
@@ -102,46 +125,43 @@ async def upload_file(username: str, file: UploadFile):
 def download_file(file_uuid: str, username: str):
     conn = get_connection()
 
+    # Use the existing database function to check access,
+    # copy the file, and verify its checksum
     try:
-        # Use the existing database function to check access,
-        # copy the file, and verify its checksum
-        success = db_operations.download_file(
+        download_path = db_operations.download_file(
             conn, username, file_uuid
         )
+    finally:
+        conn.close()
 
-        if not success:
-            raise HTTPException(
-                status_code=404,
-                detail="Download failed. File not found or access denied."
-            )
+    if download_path is None or not download_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Download failed. File not found or access denied."
+        )
 
-        # Get the original filename from the database
+    # Get the original filename from the database for the HTTP response
+    conn = get_connection()
+    try:
         cursor = conn.cursor()
         cursor.execute(
             "SELECT name FROM File_Metadata WHERE uuid = ?",
             (file_uuid,)
         )
         file_row = cursor.fetchone()
-
-        if not file_row:
-            raise HTTPException(
-                status_code=404, detail="File metadata not found."
-            )
-
-        filename = Path(file_row["name"]).name
-        download_path = DOWNLOAD_DIR / filename
-
-        if not download_path.is_file():
-            raise HTTPException(
-                status_code=404, detail="Downloaded file not found."
-            )
-
-        # Send the file to the client
-        return FileResponse(
-            path=download_path,
-            filename=filename,
-            media_type="application/octet-stream"
-        )
-
     finally:
         conn.close()
+
+    if file_row is None:
+        raise HTTPException(
+            status_code=404, detail="File metadata not found."
+        )
+
+    filename = Path(file_row["name"]).name
+
+    # Send the file to the client
+    return FileResponse(
+        path=download_path,
+        filename=filename,
+        media_type="application/octet-stream"
+    )
